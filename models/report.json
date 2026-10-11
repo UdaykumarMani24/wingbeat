@@ -1,0 +1,49 @@
+{
+  "_README": "Held-out scores from the training run of 11 October 2026. The app reads this file and displays these figures next to every prediction. Derived rates (sensitivity, specificity, precision) are computed from the confusion matrix at threshold 0.5 and are arithmetic, not estimates.",
+  "trained_on": "HumBugDB (Zenodo 4904800). Tanzania, Thailand, UK, Kenya, USA. No Indian recordings.",
+  "split": "GroupShuffleSplit by recording id, 25% held out. Windows from one recording never appear in both halves.",
+  "threshold": 0.5,
+  "date": "2026-10-11",
+
+  "detector": {
+    "question": "Is a mosquito flying near this microphone?",
+    "training_data": "18.3 h mosquito, 14.6 h background",
+    "train_windows": 166201,
+    "train_recordings": 6028,
+    "test_windows": 59292,
+    "test_recordings": 2010,
+    "positive_rate_test": 0.53,
+    "roc_auc": 0.9763,
+    "pr_auc": 0.9835,
+    "confusion_matrix": [[27151, 722], [2575, 28844]],
+    "accuracy": 0.944,
+    "sensitivity": 0.918,
+    "specificity": 0.974,
+    "precision": 0.976,
+    "reading": "Of every 100 mosquito windows it finds 92. When it says mosquito it is right 98 times in 100. Deployable."
+  },
+
+  "culex": {
+    "question": "Is this mosquito Culex quinquefasciatus?",
+    "training_data": "678 files, 124.6 minutes, none from India",
+    "train_windows": 82061,
+    "train_recordings": 4049,
+    "test_windows": 28559,
+    "test_recordings": 1350,
+    "positive_rate_test": 0.14,
+    "roc_auc": 0.9819,
+    "pr_auc": 0.8978,
+    "confusion_matrix": [[21572, 3106], [82, 3799]],
+    "accuracy": 0.888,
+    "sensitivity": 0.979,
+    "specificity": 0.874,
+    "precision": 0.550,
+    "reading": "It almost never misses a Culex, but at this threshold only 55 of every 100 windows it calls Culex really are. The high ROC AUC means the ranking is good and a stricter threshold would fix the precision; that threshold has not been chosen yet.",
+    "caveat": "Screening only. Not an identification."
+  },
+
+  "known_problems": [
+    "Keras validation_split takes the LAST 15% of the array without shuffling, and the arrays here are ordered by recording and by species. The validation block was therefore not representative: culex val_accuracy ran 0.20-0.46 against a 0.12 positive rate, which is worse than predicting all-negative. Early stopping selected on that signal and restored epoch 1 for the culex head and epoch 2 for the detector. Both models are under-trained and both scores above are a floor, not a ceiling.",
+    "The threshold is 0.5 because that is where it was trained, not because it was chosen. Choosing it properly needs the held-out prediction array, which was not saved."
+  ]
+}

@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="The Wingbeat Lab workflow: mosquito acoustic surveillance from a recording to a surveillance figure, marking what is built and verified and what is not started. Dr. Udayakumar Mani, SASTRA Deemed to be University.">
+<meta name="author" content="Dr. Udayakumar Mani, SASTRA Deemed to be University">
+<meta name="theme-color" content="#edf0ee">
+<title>Wingbeat Pipeline</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: three stacked phases, each a vertical rail of numbered stages; a
+   stage that forks shows two lanes side by side, stacking at phone width.
+
+   One light theme on purpose, matching the instrument itself. The app is used
+   outdoors in daylight where a dark screen is unreadable, and this page is
+   meant to be projected and printed. Every colour clears WCAG AA against the
+   surface behind it. */
+:root{
+  --bg:#edf0ee;      /* page: light grey, so white cards read as cards */
+  --panel:#ffffff;   /* cards, tables */
+  --sunk:#eef1ef;    /* code and spec blocks */
+  --ink:#132019;     /* 16.0:1 on white */
+  --muted:#475852;   /* 7.5:1 on white */
+  --line:#dfe5e1;
+  --done:#15624a;    /* 7.3:1 on white */
+  --need:#8a5a07;    /* 6.0:1 on white */
+  --alert:#9b2c22;   /* 7.6:1 on white */
+  --font-display:"IBM Plex Sans Condensed","Helvetica Neue",Arial,sans-serif;
+  --font-body:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+ font:400 17px/1.65 var(--font-body);-webkit-font-smoothing:antialiased}
+.wrap{max-width:880px;margin:0 auto;padding-block:30px 44px;padding-left:18px;padding-right:18px}
+
+/* masthead */
+.mast{border-bottom:2px solid var(--ink);padding-bottom:16px}
+.eyebrow{font:600 13px/1 var(--font-mono);letter-spacing:.13em;text-transform:uppercase;
+ color:var(--muted)}
+h1{font:700 clamp(1.9rem,6vw,2.7rem)/1.05 var(--font-display);margin:10px 0 0;
+ letter-spacing:-.015em;text-wrap:balance}
+.dek{color:var(--muted);margin:12px 0 0;max-width:62ch;font-size:1.05rem}
+
+/* the scoreboard */
+.score{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);
+ border:1px solid var(--line);border-radius:4px;overflow:hidden;margin-top:22px}
+@media(max-width:560px){.score{grid-template-columns:1fr}}
+.score div{background:var(--panel);padding:13px 15px;min-width:0}
+.score b{display:block;font:700 13.5px/1.2 var(--font-mono);letter-spacing:.07em;
+ text-transform:uppercase;margin-bottom:7px}
+.score p{margin:0;font-size:.97rem;color:var(--muted)}
+.score .s1 b{color:var(--done)} .score .s2 b{color:var(--need)} .score .s3 b{color:var(--alert)}
+
+/* phase */
+.phase{margin-top:40px}
+.ph-head{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:baseline;
+ border-bottom:1px solid var(--line);padding-bottom:11px}
+.ph-letter{font:700 1.5rem/1 var(--font-display);color:var(--muted);min-width:1.1em}
+.ph-title{font:700 clamp(1.15rem,3.6vw,1.45rem)/1.2 var(--font-display);
+ letter-spacing:-.01em;flex:1 1 220px;min-width:0}
+.ph-when{font:400 13.5px/1.5 var(--font-mono);color:var(--muted);flex:1 1 100%}
+.chip{font:700 12px/1 var(--font-mono);letter-spacing:.08em;text-transform:uppercase;
+ padding:5px 8px;border-radius:3px;border:1px solid currentColor;white-space:nowrap}
+.chip.ok{color:var(--done)} .chip.part{color:var(--need)} .chip.no{color:var(--alert)}
+
+/* rail of stages */
+.rail{list-style:none;margin:0;padding:0 0 0 30px;position:relative}
+.rail::before{content:"";position:absolute;left:8px;top:14px;bottom:14px;width:2px;
+ background:var(--line)}
+.rail>li{position:relative;padding:20px 0 0}
+.rail>li::before{content:"";position:absolute;left:-26px;top:27px;width:12px;height:12px;
+ border-radius:50%;background:var(--bg);border:2px solid var(--muted)}
+.rail>li.ok::before{border-color:var(--done);background:var(--done)}
+.rail>li.no::before{border-color:var(--alert)}
+.st-t{font:600 1.1rem/1.35 var(--font-body);margin:0}
+.st-d{margin:7px 0 0;color:var(--muted);font-size:1rem}
+.spec{font:400 14px/1.7 var(--font-mono);color:var(--ink);background:var(--sunk);
+ border-left:2px solid var(--line);padding:9px 12px;margin:9px 0 0;border-radius:0 3px 3px 0;
+ overflow-x:auto}
+.spec span{color:var(--muted)}
+
+/* the fork */
+.fork{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px}
+@media(max-width:620px){.fork{grid-template-columns:1fr}}
+.lane{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+ box-shadow:0 1px 2px rgba(19,32,25,.05);
+ padding:14px 15px;min-width:0}
+.lane h4{font:700 12.5px/1 var(--font-mono);letter-spacing:.09em;text-transform:uppercase;
+ margin:0 0 4px;color:var(--muted)}
+.lane .what{font:600 1.05rem/1.35 var(--font-body);margin:0 0 10px}
+.lane ol{margin:0;padding-left:1.25em;font-size:.97rem;color:var(--muted)}
+.lane ol li{margin-bottom:5px}
+.lane ol li b{color:var(--ink);font-weight:600}
+.out{margin:11px 0 0;padding-top:10px;border-top:1px dashed var(--line);
+ font:500 .97rem/1.55 var(--font-body)}
+.out em{font-style:normal;color:var(--muted)}
+
+/* callout */
+.call{border:1px solid var(--line);border-left:3px solid var(--need);background:var(--panel);
+ padding:13px 15px;margin-top:14px;border-radius:0 4px 4px 0}
+.call.red{border-left-color:var(--alert)}
+.call b{display:block;font-size:1.02rem;margin-bottom:5px}
+.call p{margin:0;font-size:.97rem;color:var(--muted);line-height:1.6}
+
+/* data table */
+.tw{overflow-x:auto;margin-top:13px;border:1px solid var(--line);border-radius:8px;
+ box-shadow:0 1px 2px rgba(19,32,25,.05)}
+table{width:100%;border-collapse:collapse;font-size:.97rem;background:var(--panel)}
+th,td{text-align:left;padding:11px 13px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font:700 12px/1.2 var(--font-mono);letter-spacing:.08em;text-transform:uppercase;
+ color:var(--muted)}
+tr:last-child td{border-bottom:0}
+td.n{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+td.pass{color:var(--done);font-family:var(--font-mono);font-weight:500}
+
+footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
+ color:var(--muted);font-size:.95rem;line-height:1.7}
+footer b{color:var(--ink)}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+
+<header class="mast">
+  <div class="eyebrow">Mosquito acoustic surveillance &middot; Thanjavur</div>
+  <h1>Wingbeat Pipeline</h1>
+  <p class="dek">What the instrument does, from a mosquito in a cup to a number a health
+  office can act on &mdash; and which parts of that path are finished.</p>
+</header>
+
+<div class="score">
+  <div class="s1"><b>Built and verified</b>
+    <p>The whole measurement path. Checked numerically against the Python original at
+    every stage, and in a real browser, offline.</p></div>
+  <div class="s2"><b>Measured, with a caveat</b>
+    <p>The detector is right 98% of the time when it says mosquito. The <i>Culex</i> head is
+    right 55% of the time, so it screens rather than identifies.</p></div>
+  <div class="s3"><b>Not started</b>
+    <p>Every measurement on a real mosquito. Nothing here has been tested on an insect,
+    and no model has heard an Indian one.</p></div>
+</div>
+
+<!-- ============================================ PHASE A -->
+<section class="phase">
+  <div class="ph-head">
+    <span class="ph-letter">A</span>
+    <h2 class="ph-title">Training the models</h2>
+    <span class="chip part">done, worth retraining</span>
+    <span class="ph-when">Once, on Google Colab with a GPU. Never on the phone.</span>
+  </div>
+
+  <ol class="rail">
+    <li class="ok">
+      <p class="st-t">1 &nbsp;Take the only public dataset there is</p>
+      <p class="st-d">HumBugDB, from Zenodo. It is the largest public collection of
+      mosquito flight audio, and it decides what can and cannot be learned here.</p>
+      <p class="spec">9,295 files &middot; 33.5 hours<br>
+      Tanzania, Thailand, United Kingdom, Kenya, USA<br>
+      <span>Indian recordings:</span> none</p>
+    </li>
+
+    <li class="ok">
+      <p class="st-t">2 &nbsp;Cut it into one-second examples</p>
+      <p class="st-d">A log-mel spectrogram is the standard representation for this task.
+      The mel bands are capped at 2 kHz, which puts the resolution where a wingbeat
+      fundamental and its first two harmonics actually live.</p>
+      <p class="spec">1 s windows, 0.5 s hop &middot; silent windows dropped<br>
+      40 mel bands, 100&ndash;2000 Hz &middot; n_fft 512, hop 128<br>
+      <span>one example =</span> 40 &times; 63</p>
+    </li>
+
+    <li class="ok">
+      <p class="st-t">3 &nbsp;Split by recording, never by window</p>
+      <p class="st-d">Two windows from one recording are nearly the same sound. Split them
+      across train and test and the model scores beautifully while having learned nothing.
+      This is the single most common way an acoustic result turns out to be false.</p>
+      <p class="spec">GroupShuffleSplit on recording id &middot; 25% held out<br>
+      <span>asserted:</span> no recording appears in both halves</p>
+    </li>
+
+    <li class="ok">
+      <p class="st-t">4 &nbsp;Train two small networks</p>
+      <p class="st-d">Small on purpose. It has to run on a mid-range phone with no network,
+      so the whole model is smaller than a photograph.</p>
+      <div class="fork">
+        <div class="lane">
+          <h4>Model 1</h4>
+          <p class="what">Is a mosquito flying near this microphone?</p>
+          <ol><li>Trained on <b>18.3 h</b> of mosquito against <b>14.6 h</b> of background</li>
+              <li>Species independent, so it travels between places better than any species
+                  model could</li></ol>
+          <p class="out">Useful on its own. <em>A trap that counts mosquito-minutes is a
+          surveillance instrument before it can name anything.</em></p>
+        </div>
+        <div class="lane">
+          <h4>Model 2</h4>
+          <p class="what">Is that mosquito <i>Culex quinquefasciatus</i>?</p>
+          <ol><li>Trained on <b>678 files, 124.6 min</b> &mdash; the most any single species
+                  in the dataset offers</li>
+              <li>A real Tamil Nadu vector: lymphatic filariasis, Japanese encephalitis</li></ol>
+          <p class="out">A hypothesis, not a result. <em>Wingbeat frequency follows body size,
+          and body size differs between populations.</em></p>
+        </div>
+      </div>
+      <p class="spec">Conv16 &rarr; pool &rarr; BN &rarr; Conv32 &rarr; pool &rarr; BN &rarr; Conv64 &rarr; GAP &rarr; Dense1 sigmoid<br>
+      23,553 parameters &middot; 92 KB each &middot; class weights, early stopping</p>
+    </li>
+
+    <li class="ok">
+      <p class="st-t">5 &nbsp;Carry the model to the phone</p>
+      <p class="st-d">Weights, the mel filterbank and the training normalisation all travel
+      together. The normalisation matters: feed the model numbers centred differently from
+      the ones it learned on and it does not fail, it answers confidently and wrongly.</p>
+      <p class="spec">detector mean &minus;27.447 sd 10.833<br>
+      culex&nbsp;&nbsp;&nbsp; mean &minus;27.827 sd&nbsp; 9.843<br>
+      <span>filterbank exported from librosa, not recomputed</span></p>
+    </li>
+
+    <li class="ok">
+      <p class="st-t">6 &nbsp;Prove the JavaScript computes the same thing</p>
+      <p class="st-d">The phone runs a reimplementation in plain JavaScript with no
+      machine-learning library. Every stage is checked against the Python original, because
+      a small mismatch here produces confident nonsense rather than an error.</p>
+      <div class="tw">
+        <table>
+          <thead><tr><th>Stage checked</th><th>Disagreement with Python</th><th>Verdict</th></tr></thead>
+          <tbody>
+            <tr><td>Resampling 44.1 kHz &rarr; 8 kHz</td><td class="n">0.0003 dB</td><td class="pass">pass</td></tr>
+            <tr><td>Log-mel features vs librosa</td><td class="n">1.3 &times; 10&#8315;&#8310; dB</td><td class="pass">pass</td></tr>
+            <tr><td>Forward pass vs Keras</td><td class="n">1.8 &times; 10&#8315;&#8311;</td><td class="pass">pass</td></tr>
+            <tr><td>Whole chain, audio &rarr; probability</td><td class="n">4.1 &times; 10&#8315;&#8312;</td><td class="pass">pass</td></tr>
+            <tr><td>Aggregation and edge cases</td><td class="n">5 of 5 cases</td><td class="pass">pass</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="spec">sh tools/check_all.sh &nbsp;<span>&mdash; run after any change to the audio code</span></p>
+    </li>
+
+    <li class="ok">
+      <p class="st-t">7 &nbsp;Measure both models on held-out recordings</p>
+      <p class="st-d">Two numbers matter and they disagree. Read only the ROC AUC and both
+      models look excellent. Read the precision and the <i>Culex</i> head turns out to be a
+      screening filter rather than an identifier.</p>
+      <div class="tw">
+        <table>
+          <thead><tr><th>Held out by recording</th><th>Detector</th><th>Culex head</th></tr></thead>
+          <tbody>
+            <tr><td>Test windows / recordings</td><td class="n">59,292 / 2,010</td><td class="n">28,559 / 1,350</td></tr>
+            <tr><td>ROC AUC</td><td class="n">0.976</td><td class="n">0.982</td></tr>
+            <tr><td>PR AUC</td><td class="n">0.984</td><td class="n">0.898</td></tr>
+            <tr><td>Finds what is really there</td><td class="n">91.8%</td><td class="n">97.9%</td></tr>
+            <tr><td><b>When it says yes, it is right</b></td><td class="n" style="color:var(--done)"><b>97.6%</b></td><td class="n" style="color:var(--alert)"><b>55.0%</b></td></tr>
+            <tr><td>Accuracy</td><td class="n">94.4%</td><td class="n">88.8%</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="spec"><span>detector  </span>[[27151&nbsp;&nbsp;722] &middot; [2575&nbsp;28844]]<br>
+      <span>culex&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>[[21572&nbsp;3106] &middot; [&nbsp;&nbsp;&nbsp;82&nbsp;&nbsp;3799]]&nbsp;&nbsp;<span>rows = truth, cols = predicted, threshold 0.5</span></p>
+      <div class="call"><b>What these two columns actually mean</b>
+        <p>The detector is deployable: it finds 92 of every 100 mosquito windows and is right
+        98 times in 100 when it says mosquito. The <i>Culex</i> head catches nearly every
+        <i>Culex</i> but almost half of what it calls <i>Culex</i> is something else, so it is
+        a filter for deciding which recordings deserve a microscope, not a statement about
+        what a mosquito was. A ROC AUC of 0.98 beside a precision of 0.55 says the ranking is
+        good and the threshold is wrong.</p></div>
+    </li>
+
+    <li class="no">
+      <p class="st-t">8 &nbsp;Retrain with an honest validation split &mdash; not done</p>
+      <p class="st-d">Both models were rolled back by early stopping to almost the start of
+      training, because the signal it was watching was meaningless. Everything above is a
+      floor, not a ceiling.</p>
+      <div class="call red"><b>The bug, and why the scores survived it</b>
+        <p>Keras <span style="font-family:var(--font-mono)">validation_split</span> takes the
+        <i>last</i> 15% of the array without shuffling, and the arrays are built in recording
+        and species order. So the validation block was one unrepresentative clump: the
+        <i>Culex</i> run reported validation accuracy between 0.20 and 0.46 against a 0.12
+        positive rate, which is worse than answering &ldquo;no&rdquo; every time. Early
+        stopping restored epoch 1 for the <i>Culex</i> head and epoch 2 for the detector. The
+        held-out test split was done properly by recording, so the numbers above are real
+        &mdash; they are just the scores of two under-trained models.</p></div>
+      <p class="spec"><span>fix:</span> carve the validation set out of the training groups with a second GroupShuffleSplit<br>
+      <span>also save the held-out prediction array, so a threshold can be chosen rather than assumed</span></p>
+    </li>
+  </ol>
+</section>
+
+<!-- ============================================ PHASE B -->
+<section class="phase">
+  <div class="ph-head">
+    <span class="ph-letter">B</span>
+    <h2 class="ph-title">Measuring one mosquito</h2>
+    <span class="chip ok">built and verified</span>
+    <span class="ph-when">Every recording. On the phone, with no network, 227 KB of models cached.</span>
+  </div>
+
+  <ol class="rail">
+    <li class="ok">
+      <p class="st-t">1 &nbsp;Record eight seconds</p>
+      <p class="st-d">The distance is not a preference, it is the limit of the method.
+      Published work found a phone reaches a mosquito at about 50 mm for a basic handset and
+      100 mm for a better one. Beyond that there is no signal, however good the software.</p>
+      <p class="spec">5&ndash;10 cm &middot; below about 50 dB background<br>
+      echo cancellation, noise suppression and automatic gain <span>all switched off</span><br>
+      <span>all three are designed to remove exactly this kind of faint steady tone</span></p>
+    </li>
+
+    <li class="ok">
+      <p class="st-t">2 &nbsp;Two independent paths read the same audio</p>
+      <p class="st-d">One is arithmetic and always available. The other is learned and
+      carries a caveat about where its training data came from. They are kept apart on
+      screen because they answer different questions, and where they disagree, that
+      disagreement is itself information.</p>
+      <div class="fork">
+        <div class="lane">
+          <h4>Path 1 &middot; arithmetic</h4>
+          <p class="what">What frequency is it beating at?</p>
+          <ol>
+            <li>20 ms windows, 10 ms hop, Hann window</li>
+            <li>FFT, then <b>harmonic product spectrum</b> &mdash; summed logs with a floor,
+                so one missing harmonic cannot wipe out the score</li>
+            <li>Parabolic interpolation on the peak, for sub-bin precision</li>
+            <li>Median, 5th&ndash;95th percentile, histogram</li>
+          </ol>
+          <p class="out">A frequency in Hz, and a band.
+          <em>Recovers a known 450 Hz tone to about 1 Hz, including when the fundamental is
+          quieter than its own harmonics.</em></p>
+        </div>
+        <div class="lane">
+          <h4>Path 2 &middot; learned</h4>
+          <p class="what">Is it a mosquito, and is it <i>Culex</i>?</p>
+          <ol>
+            <li>Windowed-sinc resample to 8 kHz (a box average folded 6 kHz noise back into
+                the band and was replaced)</li>
+            <li>1 s windows, 0.5 s hop; silent windows skipped, not scored</li>
+            <li>Log-mel 40 &times; 63, normalised with the training mean and sd</li>
+            <li>Detector on every window; <b>Culex only on windows the detector accepted</b></li>
+          </ol>
+          <p class="out">Mosquito-seconds and a per-window confidence strip.
+          <em>Asking &ldquo;is this Culex&rdquo; about empty room noise gets a confident answer
+          to a question with no answer.</em></p>
+        </div>
+      </div>
+      <div class="call"><b>Why mosquito-seconds and not an average</b>
+        <p>A mosquito does not fly past a microphone for eight seconds. It passes. A mean
+        across windows would bury one clear pass in fourteen empty ones. Overlapping detected
+        intervals are merged and their union measured, so summed over a night this becomes
+        mosquito-minutes &mdash; the standard trap statistic.</p></div>
+    </li>
+
+    <li class="ok">
+      <p class="st-t">3 &nbsp;Label it from the microscope</p>
+      <p class="st-d">This is the step that makes everything else worth keeping. Record first,
+      then kill and identify under a microscope, then type it in. A recording without a
+      confirmed identification trains nothing and proves nothing.</p>
+      <p class="spec">species &middot; sex &middot; site &middot; temperature &deg;C &middot; method &middot; GPS &middot; notes<br>
+      <span>temperature matters: wingbeat frequency moves with it</span></p>
+    </li>
+
+    <li class="ok">
+      <p class="st-t">4 &nbsp;Store it, and get it off the phone</p>
+      <p class="st-d">The measurements are useful. The raw audio is irreplaceable. Both leave
+      the device, along with whatever the model predicted, so that later the prediction can
+      be checked against the microscope.</p>
+      <p class="spec">CSV &middot; JSON &middot; 16-bit WAV per recording<br>
+      <span>model prediction saved beside each recording, per window</span></p>
+    </li>
+  </ol>
+</section>
+
+<!-- ============================================ PHASE C -->
+<section class="phase">
+  <div class="ph-head">
+    <span class="ph-letter">C</span>
+    <h2 class="ph-title">The part that is actually research</h2>
+    <span class="chip no">not started</span>
+    <span class="ph-when">Weeks of fieldwork with students and an entomologist. This is where the contribution is.</span>
+  </div>
+
+  <ol class="rail">
+    <li class="no">
+      <p class="st-t">1 &nbsp;Record 55 identified mosquitoes, and 55 backgrounds</p>
+      <p class="st-d">One recording per individual insect, because two recordings of the same
+      mosquito are not independent evidence &mdash; the same reason the training split was done
+      by recording and not by window.</p>
+      <p class="spec"><span>for a sensitivity estimate to &plusmn;8 points, 95% CI:</span> n &asymp; 55<br>
+      <span>to &plusmn;5 points:</span> n &asymp; 140<br>
+      <span>for the Culex head:</span> 55 confirmed Culex + 55 confirmed other species</p>
+    </li>
+
+    <li class="no">
+      <p class="st-t">2 &nbsp;Measure whether a model trained elsewhere transfers here</p>
+      <p class="st-d">Compare what the model said against what the microscope said. Nobody has
+      this number for Indian mosquitoes. Either answer is a finding: if it transfers, that is
+      useful; if it does not, that is more interesting, and it justifies every rupee of local
+      collection afterwards.</p>
+      <p class="spec">sensitivity &middot; specificity &middot; confidence intervals<br>
+      <span>the app already stores every prediction beside its recording for exactly this</span></p>
+    </li>
+
+    <li class="no">
+      <p class="st-t">3 &nbsp;Publish the gap that nobody had measured</p>
+      <p class="st-d">Read from HumBugDB's own metadata rather than its headline totals. This
+      is the strongest argument there is for funding Indian collection, and it is checkable by
+      anyone in an afternoon.</p>
+      <div class="tw">
+        <table>
+          <thead><tr><th>Species</th><th>Files</th><th>Audio in all public data</th><th>Trainable?</th></tr></thead>
+          <tbody>
+            <tr><td><i>Culex quinquefasciatus</i></td><td class="n">678</td><td class="n">124.6 min</td><td style="color:var(--done)">yes</td></tr>
+            <tr><td><i>Aedes aegypti</i></td><td class="n">123</td><td class="n">22.2 min</td><td style="color:var(--need)">marginal</td></tr>
+            <tr><td><i>Anopheles stephensi</i></td><td class="n">45</td><td class="n">72 seconds</td><td style="color:var(--alert)">no</td></tr>
+            <tr><td><i>Aedes albopictus</i></td><td class="n">79</td><td class="n">42 seconds</td><td style="color:var(--alert)">no</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </li>
+
+    <li class="no">
+      <p class="st-t">4 &nbsp;Retrain on recordings from here</p>
+      <p class="st-d">The same script, the same architecture, the same verification suite,
+      with local audio added. The export in Phase B exists to make this step possible.</p>
+      <p class="spec"><span>first model in existence to have heard an Indian mosquito</span></p>
+    </li>
+
+    <li class="no">
+      <p class="st-t">5 &nbsp;Turn it into surveillance</p>
+      <p class="st-d">Fixed sites, every week, through a monsoon. Relative abundance at one
+      site tracked over time is a usable signal even when any single recording is uncertain
+      &mdash; and it is the preliminary data a funded proposal needs.</p>
+      <p class="spec">mosquito-minutes per night, per site, weekly<br>
+      <span>users: district health office, NCVBDC programme</span></p>
+    </li>
+  </ol>
+
+  <div class="call red"><b>The honest limitation of the whole design</b>
+    <p>A sensor you must hold a phone inside of is not a surveillance network. At 5&ndash;10 cm
+    the phone is a research instrument for building the dataset, not the deployed product. For
+    coverage across a town the microphone has to live in the trap, which is hardware &mdash; and
+    that is a different project.</p></div>
+</section>
+
+<footer>
+  <b>Wingbeat Lab</b> &middot; prototype pipeline, October 2026<br>
+  Designed by <b>Dr. Udayakumar Mani</b>, SASTRA Deemed to be University, Thanjavur.<br>
+  Models trained on HumBugDB (Zenodo 4904800). Phone-based mosquito acoustic surveillance
+  follows Mukundarajan et al., <i>eLife</i> 2017, and the Oxford HumBug project.
+</footer>
+
+</div>
+
+</body>
+</html>
